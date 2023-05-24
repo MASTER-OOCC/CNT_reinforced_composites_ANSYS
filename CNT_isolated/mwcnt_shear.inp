@@ -1,0 +1,230 @@
+! ANSYS Mechanical APL v16.1
+!
+! In-plane shear test in a multi-wall carbon nanotube (MWCNT)
+!
+FINISH
+/CLEAR
+
+/TITLE,Multi-wall Carbon Nanotube simulation
+/STITLE,1,In-plane shear test
+
+/FILNAME,MWCNT_shear,0 ! Changes the jobname of the analysis
+
+*del,all ! Delete all previous defined parameters
+!-------------------------------------------------------------------------------------
+! INTERACTIVE MENU
+
+*ask,length_aprox,enter length of the CNT [nm],5
+*ask,nlayer,enter number of concentric layer,1
+
+*dim,nindex,array,nlayer
+*dim,mindex,array,nlayer
+*dim,ntest,array,nlayer+1
+*dim,mtest,array,nlayer+1
+ntest(1)=0
+mtest(1)=0
+ind=0
+
+*DO,i,1,nlayer
+    ntest(i+1)=ntest(i)+10
+    mtest(i+1)=mtest(i)+10
+    *ask,nindex(i),Enter n in (n,m) (zigzag or armachair only) in layer %i%,%ntest(i+1)%
+    *ask,mindex(i),Enter m in (n,m) (zigzag or armachair only) in layer %i%,%mtest(i+1)%
+*ENDDO
+
+/INPUT,mwcnt_mesh,inp,C:\Users\USACH\workspace\ANSYS\CNT\CNT_isolated
+
+!-------------------------------------------------------------------------------------
+! BOUNDARY CONDITIONS
+
+! Selecting nodes at Z=0
+tol=1e-4
+Z0=0.0
+nsel,s,loc,z,Z0-tol,Z0+tol
+
+*GET,nselnodes,NODE,0,COUNT,    ! Number of selecte nodes
+*DIM,num_0,,nselnodes,1         ! Vector of selected node numbers
+*GET,minnode,NODE,0,NUM,MIN     ! Minimun node number in the selection
+*VFILL,num_0(1,1),DATA,minnode
+
+*DO,i,2,nselnodes
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_0(i,1),DATA,minnode
+*ENDDO
+
+allsel,all
+
+! Selecting nodes at Z=L
+*GET,nzmax,node,0,mxloc,z
+nsel,s,loc,z,nzmax-tol,nzmax+tol
+
+*DIM,num_l,,nselnodes,1               ! Vector of selected node numbers
+*get,minnode,NODE,0,NUM,MIN           ! Minimun node number in the selection
+*VFILL,num_l(1,1),DATA,minnode
+
+*DO,i,2,nselnodes
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_l(i,1),DATA,minnode
+*ENDDO
+
+
+! Selecting nodes in the outer surface
+CSYS,1
+nrotat,all
+allsel,all
+
+nsel,s,loc,X,radius-tol,radius+tol
+CM,node_out,NODE
+
+CSYS,0
+nrotat,all
+
+! Selecting nodes in X=0
+CMSEL,s,node_out,NODE
+
+X0=0.0
+nsel,r,loc,X,X0-tol,X0+tol
+
+*GET,numnodes_x0,NODE,0,COUNT
+*DIM,num_x0,,numnodes_x0,1              ! Vector of selected node numbers
+*get,minnode,NODE,0,NUM,MIN             ! Minimun node number in the selection
+*VFILL,num_x0(1,1),DATA,minnode
+
+*DO,i,2,numnodes_x0
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_x0(i,1),DATA,minnode
+*ENDDO
+
+! Selecting nodes in Y=0
+CMSEL,s,node_out,NODE
+
+Y0=0.0
+nsel,r,loc,Y,Y0-tol,Y0+tol
+
+*GET,numnodes_y0,NODE,0,COUNT
+*DIM,num_y0,,numnodes_y0,1              ! Vector of selected node numbers
+*get,minnode,NODE,0,NUM,MIN             ! Minimun node number in the selection
+*VFILL,num_y0(1,1),DATA,minnode
+
+*DO,i,2,numnodes_y0
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_y0(i,1),DATA,minnode
+*ENDDO
+
+
+!-------------------------------------------------------------------------------------
+! BOUNDARY CONDITIONS
+allsel,all
+CSYS,1
+nrotat,all
+
+! Fixed ends
+*DO,i,1,nselnodes
+    D,num_0(i,1),UZ,0.0
+    D,num_l(i,1),UZ,0.0
+*ENDDO
+
+! Radial displacement
+tens_disp = 0.001
+*DO,i,1,numnodes_x0
+    D,num_x0(i,1),UX, -tens_disp
+    D,num_x0(i,1),UY, 0.0
+*ENDDO
+*DO,i,1,numnodes_y0
+    D,num_y0(i,1),UX, tens_disp
+    D,num_y0(i,1),UY, 0.0
+*ENDDO
+
+! /PBC,U,,1   ! To display boundary conditions (displacements)
+
+! -------------------------------------------------------------------------------------
+! SOLUTION
+/SOLU
+
+ANTYPE,STATIC       ! Static analysis
+! NLGEOM,ON           ! Includes large-deflection (large rotation) effects or large strain effects, according to the element type.
+! SOLCONTROL,ON       ! Advanced nonlinear options
+
+! AUTOTS,ON           ! Automatic strategy
+! TIME,0.5            ! Time at the end of the load step
+! DELTIM,5.0e-2,1.0e-6,1.0e-1,ON ! ON: Use final time step from previous load step as the starting time step
+! CNVTOL,F,,1e-3,0,1e-2  !try this value
+
+!PSTRES,ON           ! Calculate prestress effects
+!STABILIZE,constant,energy,1e-3,no
+!CNVTOL,F,,1e-3,0,1e-2  !try this value
+!DCUM,RPL
+!EQSLV,SPARSE, ! Sparse solver
+
+OUTRES,all,all
+
+allsel,all
+
+solve
+
+*GET,nSsteps,ACTIVE,0,SOLU,NCMSS ! Number of sub-steps
+
+FINISH
+
+!-------------------------------------------------------------------------------------
+! POST-PROCESSING
+/POST1
+
+! Transversal area
+! AA_CNT = 0
+! *DO,j,1,nlayer
+   ! AA_CNT = AA_CNT + 2*PI*thick_graph*diam_lay(j)*0.5 ! Area
+! *ENDDO
+
+! Selection of nodes to calculate the reactions
+tol=1.0e-6
+NSEL,R,LOC,Z,Z0-tol,Z0+tol
+! NSEL,R,LOC,Z,-tol,L+tol ! debug
+
+! Results calculation
+*DIM,drad_l,,nSsteps,1
+*DIM,disp_node,,nSsteps,1
+*DIM,FZ_VECTOR,,nSsteps,1
+*DIM,engstrain_11,,nSsteps,1
+*DIM,engstrain_22,,nSsteps,1
+*DIM,rho_12,,nSsteps,1
+*DIM,engstress,,nSsteps,1
+*DIM,young_mod,,nSsteps,1
+*DO,p,1,nSsteps
+    SET,1,p
+
+    drad_l(p)    = -SQRT((UX(num_l(1,1)))**2+(UY(num_l(1,1)))**2)   ! Radial displacement
+    disp_node(p) =  UZ(nodemax_lay)                                 ! Axial displacment 
+    
+    FSUM
+    *GET,FZ_VECTOR(p),FSUM,0,ITEM,FZ
+    
+    engstrain_11(p) = disp_node(p)/nzmax                ! Engineering strain (axial direction)
+    engstrain_22(p) = drad_l(p)/radius                  ! Engineering strain (circumferential direction)
+    rho_12(p)       =-engstrain_22(p)/engstrain_11(p)   ! Poisson ratio
+    engstress(p)    = FZ_VECTOR(p)/AA_CNT               ! Engineering stress
+    young_mod(p)    = engstress(p)/engstrain_11(p)      ! Young modulus
+*ENDDO
+ 
+*CFOPEN,results_tensile.txt,,
+!*CFOPEN,results_tensile.txt,,C:\Users\USACH\workspace\ANSYS\CNT
+*VWRITE,'Disp. ','[nm]: ',disp_node(1),' Force',' [N]: ',FZ_VECTOR(1),' Strain: ','  ',engstrain_11(1),' Poisson: ','  ',rho_12(1),' Stress ','[TPa]: ',engstress(1),' Young ',' [TPa]: ',young_mod(1)
+(A7,A7,G16.8,A6,A5,G16.8,A8,A7,G16.8,A8,A8,G16.8,A8,A8,G16.8,A7,A8,G16.8)
+*CFCLOS
+
+! View deformed shape
+/VIEW,1,1,1,1   
+/ANG,1  
+/REP,FAST   
+ESEL,S,TYPE,,1  
+EPLOT   
+FINISH  
+/POST1
+SET,LAST
+PLDISP,1
+
+FINISH
