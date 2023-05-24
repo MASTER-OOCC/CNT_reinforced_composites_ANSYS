@@ -1,0 +1,212 @@
+! ANSYS Mechanical APL v16.1
+!
+! Tensile test in a multi-wall carbon nanotube (MWCNT)
+!
+FINISH
+/CLEAR
+
+/TITLE,Multi-wall Carbon Nanotube simulation
+/STITLE,2,Tensile test
+
+/FILNAME,MWCNT_tensile,0 ! Changes the jobname of the analysis
+
+*del,all ! Delete all previous defined parameters
+!-------------------------------------------------------------------------------------
+! INTERACTIVE MENU
+
+*ask,length_aprox,enter length of the CNT [nm],20
+*ask,nlayer,enter number of concentric layer,1
+
+*dim,nindex,array,nlayer
+*dim,mindex,array,nlayer
+*dim,ntest,array,nlayer+1
+*dim,mtest,array,nlayer+1
+ntest(1)=0
+mtest(1)=0
+ind=0
+
+*DO,i,1,nlayer
+    ntest(i+1)=ntest(i)+10
+    mtest(i+1)=mtest(i)+10
+    *ask,nindex(i),Enter n in (n,m) (zigzag or armachair only) in layer %i%,%ntest(i+1)%
+    *ask,mindex(i),Enter m in (n,m) (zigzag or armachair only) in layer %i%,%mtest(i+1)%
+*ENDDO
+
+/INPUT,mwcnt_mesh,inp,
+
+!-------------------------------------------------------------------------------------
+! BOUNDARY CONDITIONS
+
+! Selecting nodes at Z=0
+tol=1e-4
+Z0=0.0
+
+nsel,s,loc,z,Z0-tol,Z0+tol
+*GET,nselnodes_0,NODE,0,COUNT,    ! Number of selected nodes
+*DIM,num_0,,nselnodes_0,1         ! Vector of selected node numbers
+*GET,minnode,NODE,0,NUM,MIN       ! Minimun node number in the selection
+*VFILL,num_0(1,1),DATA,minnode
+
+*DO,i,2,nselnodes_0
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_0(i,1),DATA,minnode
+*ENDDO
+allsel,all
+
+! Selecting max node at Z
+*GET,nzmax,node,0,mxloc,z
+
+! Selecting nodes at Z=L/2
+tol2=L/2
+nsel,s,loc,z,nzmax/2-tol,nzmax/2+tol2
+*GET,nselnodes_2,NODE,0,COUNT,    ! Number of selected nodes
+
+*DIM,num_2,,nselnodes_2,1              ! Vector of selected node numbers
+*GET,minnode,NODE,0,NUM,MIN            ! Minimun node number in the selection
+*VFILL,num_2(1,1),DATA,minnode
+
+*DO,i,2,nselnodes_2
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_2(i,1),DATA,minnode
+*ENDDO
+allsel,all
+
+! Selecting nodes at Z=L
+nsel,s,loc,z,nzmax-tol,nzmax+tol
+
+*GET,nselnodes_l,NODE,0,COUNT,      ! Number of selected nodes
+*DIM,num_l,,nselnodes_l,1           ! Vector of selected node numbers
+*GET,minnode,NODE,0,NUM,MIN         ! Minimun node number in the selection
+*VFILL,num_l(1,1),DATA,minnode
+
+*DO,i,2,nselnodes_l
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_l(i,1),DATA,minnode
+*ENDDO
+
+allsel,all
+
+!-------------------------------------------------------------------------------------
+! SOLUTION
+/SOLU
+
+ANTYPE,STATIC       ! Static analysis
+! NLGEOM,ON           ! Includes large-deflection (large rotation) effects or large strain effects, according to the element type.
+! SOLCONTROL,ON       ! Advanced nonlinear options
+
+! AUTOTS,ON           ! Automatic strategy
+! TIME,0.5            ! Time at the end of the load step
+! DELTIM,5.0e-2,1.0e-6,1.0e-1,ON ! ON: Use final time step from previous load step as the starting time step
+! CNVTOL,F,,1e-3,0,1e-2  !try this value
+
+!PSTRES,ON           ! Calculate prestress effects
+!STABILIZE,constant,energy,1e-3,no
+!CNVTOL,F,,1e-3,0,1e-2  !try this value
+!DCUM,RPL
+!EQSLV,SPARSE, ! Sparse solver
+
+OUTRES,all,all
+
+! Prescribed displacement on Z=0
+*DO,i,1,nselnodes_0
+    D,num_0(i,1),UX,0.0
+    D,num_0(i,1),UY,0.0
+    D,num_0(i,1),UZ,0.0
+*ENDDO
+
+! Prescribed displacement on Z=L
+tens_disp = 0.01
+*DO,i,1,nselnodes_l
+    !D,num_l(i,1),UX,0.0
+    !D,num_l(i,1),UY,0.0
+    D,num_l(i,1),UZ,tens_disp*nzmax
+*ENDDO
+
+allsel,all
+
+SOLVE
+
+*GET,nSsteps,ACTIVE,0,SOLU,NCMSS ! Number of sub-steps
+
+FINISH
+
+!-------------------------------------------------------------------------------------
+! POST-PROCESSING
+/POST1
+
+! Selection of nodes to calculate the reactions
+tol=1.0e-4
+NSEL,R,LOC,Z,Z0-tol,Z0+tol
+
+! Results calculation
+*DIM,drad_l,,nSsteps,1
+*DIM,disp_node,,nSsteps,1
+*DIM,FZ_VECTOR,,nSsteps,1
+*DIM,engstrain_11,,nSsteps,1
+*DIM,engstrain_22,,nSsteps,1
+*DIM,rho_12,,nSsteps,1
+*DIM,rho_13,,nSsteps,1
+*DIM,engstress,,nSsteps,1
+*DIM,young_mod,,nSsteps,1
+*DO,p,1,nSsteps
+    SET,1,p
+    drad_l(p)    = -SQRT((UX(num_2(1,1)))**2+(UY(num_2(1,1)))**2)   ! Radial displacement
+    disp_node(p) =  UZ(nodemax_lay)                                 ! Axial displacement 
+    
+    FSUM
+    *GET,FZ_VECTOR(p),FSUM,0,ITEM,FZ
+    
+    engstrain_11(p) = disp_node(p)/nzmax                ! Engineering strain (axial direction)
+    engstrain_22(p) = drad_l(p)/radius                  ! Engineering strain (radial direction)
+    rho_12(p)       =-engstrain_22(p)/engstrain_11(p)   ! Poisson ratio (12)
+    engstress(p)    = FZ_VECTOR(p)/AA_CNT               ! Engineering stress
+    young_mod(p)    = engstress(p)/engstrain_11(p)      ! Young modulus
+*ENDDO
+
+*CFOPEN,results_tensile.txt,,
+*VWRITE,'Disp. ','[nm]: ',disp_node(1),' Force',' [N]: ',FZ_VECTOR(1),' Strain: ','  ',engstrain_11(1),' Poisson: ','  ',rho_12(1),' Stress ','[TPa]: ',engstress(1),' Young ',' [TPa]: ',young_mod(1)
+(A7,A7,G16.8,A6,A5,G16.8,A8,A7,G16.8,A8,A8,G16.8,A8,A8,G16.8,A7,A8,G16.8)
+*CFCLOS
+
+! View FE mesh
+/VIEW,1,1,1,1
+/ANG,1
+/REP,FAST
+ESEL,S,TYPE,,1
+EPLOT
+FINISH
+
+! Print the mesh
+! /PLOPT,info,off ! turn off the scale
+! /PLOPT,frame,off ! turn off the frame 
+! /PLOPT,title,off ! turn off the title
+! /PLOPT,file,off
+! /PLOPT,minm,off
+! /triad,off
+! White background
+! /RGB,INDEX, 100, 100, 100, 0
+! /RGB,INDEX, 80, 80, 80, 13
+! /RGB,INDEX, 60, 60, 60, 14
+! /RGB,INDEX, 0, 0, 0, 15
+! Black (white) element color
+! /COLOR,ELEM,WHIT,,,
+! /SHOW,PSCR,,,8
+! /REPLOT
+! /SHOW,PNG,,,8
+! /REPLOT
+
+! View deformed shape
+/POST1
+SET,LAST
+PLDISP,1
+
+FINISH
+
+! Black background
+! /RGB,INDEX, 0, 0, 0, 0  
+! /RGB,INDEX, 60, 60, 60,13   
+! /RGB,INDEX, 80, 80, 80,14   
+! /RGB,INDEX,100,100,100,15 

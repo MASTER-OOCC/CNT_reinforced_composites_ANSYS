@@ -1,0 +1,222 @@
+! ANSYS Mechanical APL v16.1
+!
+! Torsion test in a multi-wall carbon nanotube (MWCNT)
+!
+FINISH
+/CLEAR
+
+/TITLE,Multi-wall Carbon Nanotube simulation
+/STITLE,1,Torsion test
+
+/FILNAME,MWCNT_torsion,0 ! Changes the jobname of the analysis
+
+*del,all ! Delete all previous defined parameters
+!-------------------------------------------------------------------------------------
+! INTERACTIVE MENU
+
+*ask,length_aprox,enter length of the CNT [nm],10
+*ask,nlayer,enter number of concentric layer,1
+
+
+*dim,nindex,array,nlayer
+*dim,mindex,array,nlayer
+*dim,ntest,array,nlayer+1
+*dim,mtest,array,nlayer+1
+ntest(1)=0
+mtest(1)=0
+ind=0
+
+*DO,i,1,nlayer
+    ntest(i+1)=ntest(i)+10
+    mtest(i+1)=mtest(i)+10
+    *ask,nindex(i),Enter n in (n,m) (zigzag or armachair only) in layer %i%,%ntest(i+1)%
+    *ask,mindex(i),Enter m in (n,m) (zigzag or armachair only) in layer %i%,%mtest(i+1)%
+*ENDDO
+
+/INPUT,mwcnt_mesh,inp,
+
+!-------------------------------------------------------------------------------------
+! BOUNDARY CONDITIONS
+
+! Selecting nodes at Z=0
+tol=1e-4
+Z0=0.0
+
+nsel,s,loc,z,Z0-tol,Z0+tol
+*GET,nselnodes_0,NODE,0,COUNT,      ! Number of selected nodes
+*DIM,num_0,,nselnodes_0,1           ! Vector of selected node numbers
+*GET,minnode,NODE,0,NUM,MIN         ! Minimun node number in the selection
+*VFILL,num_0(1,1),DATA,minnode
+
+*DO,i,2,nselnodes_0
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_0(i,1),DATA,minnode
+*ENDDO
+allsel,all
+
+*GET,nzmax,node,0,mxloc,z
+
+! Selecting nodes at Z=L
+*IF,mindex(1),EQ,0.0,THEN ! zigzag (n,0)
+    tol=0.1 ! NOTE: not tested in a MWCNT alternating zigzag and armchair
+*ENDIF
+
+nsel,s,loc,z,nzmax-tol,nzmax+tol
+*GET,nselnodes_l,NODE,0,COUNT,      ! Number of selected nodes
+
+*DIM,num_l,,nselnodes_l,1           ! Vector of selected node numbers
+*GET,minnode,NODE,0,NUM,MIN         ! Minimun node number in the selection
+*VFILL,num_l(1,1),DATA,minnode
+
+*DO,i,2,nselnodes_l
+    *GET,nextnode,NODE,minnode,NXTH,    ! minnode: previous node number for each nextnode
+    minnode=nextnode                    ! nextnode: each component of the above vector num
+    *VFILL,num_l(i,1),DATA,minnode
+*ENDDO
+
+allsel,all
+
+! Create a master node to apply the rotation
+n,,0,0,nzmax+nzmax*0.1
+*GET,nmaster,node,,NUM,MAXD ! Last defined node
+
+/COM, CONTACT PAIR CREATION - START 
+! Define surface-based constraint type of pair  
+MAT,1
+REAL,3
+ET,3,169        ! 2-D Target Segment
+ET,4,172        ! 2-D 3-Node Surface-to-Surface Contact
+KEYOPT,3,2,0    ! Boundary conditions for rigid target nodes: Automatically constrained by the program
+KEYOPT,3,4,111  ! DOF set to be constrained on the dependent or independent DOF for internally-generated multipoint constraints (MPCs): (111) all DOF are constrained
+KEYOPT,4,2,2    ! Contact algorithm: Multipoint constraint (MPC)
+KEYOPT,4,4,1    ! Location of contact detection point: On nodal point - normal from contact surface
+KEYOPT,4,12,5   ! Behavior of contact surface: Bonded (always)
+TYPE,3
+! Create a pilot node   
+TSHAP,PILO
+E,nmaster
+NSEL,S,,,nmaster
+! CM,master_node,NODE 
+! CMSEL,S,_NODECM 
+! Generate the contact surface  
+NSEL,NONE 
+*DO,i,1,nselnodes_l
+    NSEL,A,,,num_l(i,1)
+*ENDDO
+
+CM,_CONTACT,NODE
+TYPE,4
+ESLN,S,0
+ESURF
+/COM, CONTACT PAIR CREATION - END
+
+! CNCHECK,AUTO 
+
+allsel,all
+
+FINISH
+
+!-------------------------------------------------------------------------------------
+! SOLUTION
+/SOLU
+
+ANTYPE,STATIC       ! Static analysis
+NLGEOM,ON           ! Includes large-deflection (large rotation) effects or large strain effects, according to the element type.
+! SOLCONTROL,ON       ! Advanced nonlinear options
+
+! AUTOTS,ON           ! Automatic strategy
+! TIME,0.5           ! Time at the end of the load step
+! DELTIM,5.0e-2,1.0e-6,1.0e-1,ON ! ON: Use final time step from previous load step as the starting time step
+! CNVTOL,F,,1e-3,0,1e-2  !try this value
+
+! PSTRES,ON           ! Calculate prestress effects
+STABILIZE,constant,energy,1e-3,no
+! CNVTOL,F,,1e-3,0,1e-2  !try this value
+! DCUM,RPL
+EQSLV,SPARSE, ! Sparse solver
+
+OUTRES,all,all
+
+!--------------------------------
+! Prescribed displacement on Z=0
+*DO,i,1,nselnodes_0
+    D,num_0(i,1),UX,0.0
+    D,num_0(i,1),UY,0.0
+    D,num_0(i,1),UZ,0.0
+*ENDDO
+
+pdisp=+0.05 ! (-): clockwise
+D,nmaster,UX,0
+D,nmaster,UY,0
+D,nmaster,ROTZ,pdisp
+
+allsel,all
+
+SOLVE
+
+*GET,nSsteps,ACTIVE,0,SOLU,NCMSS ! Number of sub-steps
+
+FINISH
+!-------------------------------------------------------------------------------------
+! POST-PROCESSING
+/POST1
+
+! Selection of nodes to calculate the reactions
+tol=1.0e-6
+NSEL,R,LOC,Z,-tol,tol
+
+l_tube = length_aprox
+! l_tube = nzmax
+
+! Results calculation
+! *DIM,drad_l,,nSsteps,1
+*DIM,mom_tor,,nSsteps,1
+*DIM,disp_ang,,nSsteps,1
+*DIM,engstrain,,nSsteps,1
+*DIM,engstress,,nSsteps,1
+*DIM,shear_mod,,nSsteps,1
+*DO,p,1,nSsteps
+    SET,1,p
+    disp_ang(p)     = ROTZ(nmaster)
+    
+    FSUM
+    *GET,mom_tor(p),FSUM,0,ITEM,MZ
+
+    engstrain(p)    = disp_ang(p)*radius/l_tube ! Shear strain
+    engstress(p)    = mom_tor(p)*radius/J0_CNT ! Shear stress
+    shear_mod(p)    = engstress(p)/engstrain(p) ! Shear modulus
+*ENDDO
+
+*CFOPEN,results_torsion.txt,,
+*VWRITE,'Angle','[-]: ',disp_ang(1),' Torsion','[Nnm]:',mom_tor(1),' Strain: ','[-] ',engstrain(1),' Stress','[TPa]: ',engstress(1),' Young ',' [TPa]: ',shear_mod(1)
+(A8,A5,G16.8,A8,A5,G16.8,A8,A7,G16.8,A8,A8,G16.8,A7,A8,G16.8)
+*CFCLOS
+
+! View deformed shape
+/VIEW,1,1,1,1   
+/ANG,1  
+/REP,FAST   
+ESEL,S,TYPE,,1  
+EPLOT   
+FINISH  
+/POST1
+SET,LAST
+PLDISP,1
+
+FINISH
+
+!-------------------------------------------------------------------------------------
+! GRAPH DISPLAY
+! /POST26
+
+! /TITLE,Force-Displacement curve
+! /AXLAB,X,DISPLACEMENT [nm]
+! /AXLAB,Y,FORCE [N]
+! !/xrange,1,10
+! XVAR,disp_node
+! PLVAR,fZ_VECTOR
+! !*vplot,disp_node(1),fZ_VECTOR(1)
+! /REPLOT
+
+! FINISH
