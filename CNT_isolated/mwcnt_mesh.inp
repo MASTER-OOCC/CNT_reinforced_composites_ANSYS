@@ -1,0 +1,232 @@
+! ANSYS Mechanical APL v16.1
+!
+! Script to mesh a multi-wall carbon nanotube (MWCNT)
+!
+! Material parameters from: 
+! Saavedra Flores, E. I., Adhikari, S., Friswell, M. I., & Scarpa, F. (2011). 
+! Hyperelastic axial buckling of single wall carbon nanotubes. Physica E: Low-Dimensional Systems and Nanostructures, 44(2), 525–529.
+!-------------------------------------------------------------------------------------
+! GEOMETRY
+/PREP7
+
+/UNITS,SI
+
+L = 0.142           ! Length of each covalent bond [nm]
+range = 1.0*0.34    ! Range of influence of the van der Waals forces [nm]. When the distance is larger than range, the effect of the van-der Waals force can be neglected. NOTE: A larger distance creates interaction between the CNTS and the matrix, crossing the nanotube diameter. It is important to keep this distance in mind if a constant rigidity is used.
+thick_graph=0.34    ! Graphene layer thickness [nm]
+
+theta=30    ! Hexagon angle
+alpha=1     ! wall aspect ratio (zigzag)
+h=alpha*L   ! (zigzag)
+gam=0.0     ! geometric base ratio (zigzag)
+
+*afun,rad ! Changes the units from degrees to radians
+PI=acos(-1)
+*afun,deg
+
+!-------------------------------------------------------------------------------------
+! ELEMENT AND MATERIAL
+/INPUT,mwcnt_elem_mat,inp,
+!-------------------------------------------------------------------------------------
+! MWCNT creation. Each loop corresponds to a SWCNT
+*DIM,diam_aprox_lay,array,nlayer
+*DIM,diam_lay,array,nlayer
+AA_CNT = 0
+*DO,i,1,nlayer
+    ALLSEL,ALL
+    *get,nodeNum,node,,count
+    *get,elemNum,elem,,count 
+ 
+    diam_aprox_lay(i) = sqrt(3*(nindex(i)**2+mindex(i)**2+nindex(i)*mindex(i)))*L/PI
+    
+    ! Geometric rules
+    *IF,mindex(i),EQ,0.0,THEN ! zigzag (n,0)
+        ! Number of hexagons in the Z direction
+        n_z = NINT((length_aprox)/(2*L+2*L*sin(theta)))
+        ! Number of hexagons in the circunferential direction
+        n_th_lay = NINT((diam_aprox_lay(i)*PI)/(2*L*cos(theta)))
+        d_th_lay = 360/n_th_lay
+        
+        a_3=d_th_lay/2
+        radius=(l*cos(theta)+gam*l)/tan(d_th_lay/2)
+        d_z=2*(l*sin(theta)+h)
+   
+        ! Node defintion (zigzag) 
+        n,1+nodeNum,radius,0,0                                  !n1
+        n,2+nodeNum,radius,-a_3,(h/2)+l*sin(theta)+h/2-h        !n2
+        n,3+nodeNum,radius,-a_3,(3/2)*h+l*sin(theta)+h/2-h      !n3
+        n,4+nodeNum,radius,   0,(3/2)*h+2*l*sin(theta)+h/2-h    !n4
+        n,5+nodeNum,radius, a_3,(3/2)*h+l*sin(theta)+h/2-h      !n5
+        n,6+nodeNum,radius, a_3,(h/2)+l*sin(theta)+h/2-h        !n6
+        n,7+nodeNum,radius,   0,(5/2)*h+2*l*sin(theta)+h/2-h    !n7
+        
+        ! Element definition (zigzag)
+        e,1+nodeNum,2+nodeNum   !e1
+        e,2+nodeNum,3+nodeNum   !e2
+        e,3+nodeNum,4+nodeNum   !e3
+        e,4+nodeNum,5+nodeNum   !e4
+        e,6+nodeNum,1+nodeNum   !e5
+        e,4+nodeNum,7+nodeNum   !e6
+        
+    *ELSE ! armchair (n,n) 
+        ! Number of hexagons in the Z direction
+        n_z = NINT(length_aprox/(2*L*cos(theta)))
+        ! Number of hexagons in the circunferential direction
+        n_th_lay = NINT((diam_aprox_lay(i)*PI)/(2*L*sin(theta)+2*L))
+        d_th_lay = 360/n_th_lay
+            
+        AA=cos(180/n_th_lay)
+        BB=sin(180/n_th_lay)
+        CC=2*(sin(theta))**2
+        BBB=2*BB*(L**2)/(AA-1)
+        CCC=(CC*(L**4)-AA*(L**4)-L**4)/(AA-1)
+        X=0.5*(-BBB+sqrt(BBB**2-4*CCC))
+        
+        radius=(sqrt(X**2+L**4))/2/L
+        theta1=acos(1-(L**2)*(sin(theta)**2)/2/(radius**2))
+        theta2=acos(1-(L**2)/2/(radius**2))
+        
+        ! Node defintion
+        n,1+nodeNum,radius,                0,L*cos(theta)   !n1
+        n,2+nodeNum,radius,           theta1,0              !n2
+        n,3+nodeNum,radius,           theta1,2*L*cos(theta) !n3
+        n,4+nodeNum,radius,    theta1+theta2,0              !n4
+        n,5+nodeNum,radius,    theta1+theta2,2*L*cos(theta) !n5
+        n,6+nodeNum,radius,  2*theta1+theta2,L*cos(theta)   !n6
+        n,7+nodeNum,radius,2*theta1+2*theta2,L*cos(theta)   !n7
+    
+        ! Element definition
+        e,1+nodeNum,2+nodeNum   !e1
+        e,1+nodeNum,3+nodeNum   !e2
+        e,2+nodeNum,4+nodeNum   !e3
+        e,4+nodeNum,6+nodeNum   !e4
+        e,6+nodeNum,5+nodeNum   !e5
+        e,6+nodeNum,7+nodeNum   !e6
+        
+    *ENDIF
+    diam_lay(i) = 2*radius ! CNT layer radius
+    
+    ! Selection of node for the longitudinal direction
+    NSEL,S,NODE,,1+nodeNum,7+nodeNum
+    ESEL,S,ELEM,,1+elemNum,6+elemNum
+    *GET,minelem,ELEM,0,NUM,MIN ! for the circunferential direction
+    
+    ! Generation along the longitudinal direction
+    *IF,mindex(i),EQ,0.0,THEN ! zigzag
+        EGEN,n_z,7,1+elemNum,6+elemNum,1,,,,,,,,d_z
+    *ELSE ! armchair
+        EGEN,n_z,7,1+elemNum,6+elemNum,1,,,,,,,,2*L*cos(theta)
+    *ENDIF
+
+    *IF,mindex(i),EQ,0.0,THEN ! zigzag
+        ! Delete last defined element
+        *GET,delelem,elem,,NUM,MAXD
+        *GET,delnode,node,,NUM,MAXD
+        EDELE,delelem ! Delete element. Creates a null element.
+        NDELE,delnode
+        NUMCMP,ELEM ! To remove the null element and keep the element numbering
+    *ENDIF
+
+    ALLSEL,ALL
+    *GET,nodeNum2,node,,NUM,MAXD ! Last defined node
+   
+    *IF,mindex(i),EQ,0,THEN ! zigzag
+        e,nodeNum2-2,nodeNum2-1
+    *ELSE ! armchair
+        e,nodeNum2-4,nodeNum2-2
+    *ENDIF
+    
+    *GET,maxelem,ELEM,0,NUM,MAXD ! for the circunferential direction
+    
+    ! Selection of elements and nodes for the circunferential direction
+    ESEL,S,ELEM,,minelem,maxelem
+    NSEL,S,NODE,,1+nodeNum,nodeNum2
+    *GET,nodeNum3,node,,count ! Number of nodes in the ESEL set
+    ! Generation along the circunferential direction
+    EGEN,n_th_lay,nodeNum3,minelem,maxelem,1,,,,,,,d_th_lay
+    
+    ! Entity definition
+    CM,STRCAT('CNTlay_',CHROCT(i)),ELEM
+*ENDDO
+
+! Transversal area and polar inertia
+*IF,nlayer,GT,1,THEN
+    AA_CNT = PI/4*((diam_lay(nlayer)+thick_graph)**2-(diam_lay(1)-thick_graph)**2)
+    J0_CNT = PI/32*((diam_lay(nlayer)+thick_graph)**4-(diam_lay(1)-thick_graph)**4)
+*ELSE
+    AA_CNT = 2*PI*thick_graph*diam_lay(1)*0.5
+    J0_CNT = PI/32*((diam_lay(1)+thick_graph)**4-(diam_lay(1)-thick_graph)**4)
+*ENDIF
+
+ALLSEL,ALL
+
+NUMMRG,all,1.E-15
+NUMCMP,all,
+
+NUMMRG,NODE,,,,LOW
+NUMCMP,NODE 
+NUMCMP,ELEM 
+!eplot
+
+*GET,nodemax_lay,node,,NUM,MAXD ! Last defined node of the layer (for the disp. calculation)
+
+! ROD ELEMENT DEFINITION (van der Waals forces)
+!
+*IF,nlayer,GT,1,THEN
+
+TYPE,2
+REAL,1
+
+! Loop over the nodes of each layer
+CSYS,0 ! Cartesian coordinates
+*DO,i,1,nlayer-1
+    ALLSEL,all
+
+    ! Select nodes in the layer inner layer
+    CMSEL,s,STRCAT('CNTlay_',CHROCT(i)),NODE
+    NSLE,s,Active
+    *VGET,layer_sel,NODE,,NLIST
+    *GET,layer_nodes,node,,count
+    
+    ! Loop over the nodes of the layer
+    *DO,j,1,layer_nodes
+        nodeNum = layer_sel(j)
+
+        ! Node coordinates
+        xloc = NX(nodeNum)
+        yloc = NY(nodeNum)
+        zloc = NZ(nodeNum)
+
+        ! Select outer layer
+        CMSEL,s,STRCAT('CNTlay_',CHROCT(i+1)),NODE
+        NSLE,s,Active
+        
+        ! Select element following the criterion
+        NSEL,r,loc,x,xloc-range,xloc+range
+        NSEL,r,loc,y,yloc-range,yloc+range
+        NSEL,r,loc,z,zloc-range,zloc+range
+
+        ! Get the list of selected elements
+        *VGET,selnode,NODE,,NLIST
+        ! Get the number of selected elements
+        *GET,tselnode,NODE,,COUNT
+        ! Create element
+        *DO,k,1,tselnode
+            e,nodeNum,selnode(k)
+        *ENDDO
+        *DEL,selnode
+        *DEL,tselnode
+    *ENDDO
+    *DEL,layer_sel
+*ENDDO
+*ENDIF
+ALLSEL,all
+eplot
+
+! Verify mesh
+! *get,check,node,0,count
+
+! *if,check,NE,n_z*(n_th*4)+n_th*2,then
+! *MSG,error,
+! Error in generation of mesh
+! *endif

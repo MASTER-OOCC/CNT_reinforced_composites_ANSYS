@@ -1,0 +1,79 @@
+! ANSYS Mechanical APL v16.1
+!
+! Script to define the element and material type.
+!
+! Material parameters from: 
+! Saavedra Flores, E. I., Adhikari, S., Friswell, M. I., & Scarpa, F. (2011). 
+! Hyperelastic axial buckling of single wall carbon nanotubes. Physica E: Low-Dimensional Systems and Nanostructures, 44(2), 525–529.
+!-------------------------------------------------------------------------------------
+! MATERIAL PROPERTIES
+
+! Jin2002
+E_c = 7.7017
+G_c = 0.7702
+d   = 0.1512
+nu  = 0.3
+k_vdw = 0.05189 ! Spring stifness. Proportional to E_c. Fan, C. W., Liu, Y. Y., & Hwu, C. (2009). Applied Physics A, 95(3), 819–831.
+                ! Also see: Li, C., & Chou, T.-W. (2003). Elastic moduli of multi-walled carbon nanotubes and the effect of van der Waals forces. Composites Science and Technology, 63(11), 1517–1524.   
+
+! Cornell1995
+! E_c = 5.4870
+! G_c = 0.8708
+! d   = 0.1466
+! nu  = 0.3
+! k_vdw = 0.037 
+
+! Linear elastic properties (isotropic)
+MPTEMP,,,,,,,,  
+MPTEMP,1,0  
+MPDATA,EX,1,,E_c
+!MPDATA,GXY,1,,G_c
+MPDATA,PRXY,1,,nu
+
+!-------------------------------------------------------------------------------------
+! ELEMENT
+
+! Elements for the covalent bond
+ET,1,BEAM188    ! Element based on the Timoshenko beam theory
+
+KEYOPT,1,2,1 ! Cross section scaling: classical beam theory (requires NLGEOM=ON)
+! KEYOPT,1,3,2
+! KEYOPT,1,3,3
+
+SECTYPE,1,BEAM,CSOLID   ! To associate section type information with a section ID number
+    ! SECID=1 : BEAM188 elements 
+    ! Type=BEAM : Defines a beam section
+    ! Subtype=CSOLID : Circular solid
+SECDATA,d/2
+    ! Data geometry describing the (circular) section.
+    ! Buils a numeric model using a nine-node cell.
+    ! VAL1=d/2 : radius
+    ! VAL2=8 : Divisions around the circunference (default value)
+    ! VAL3=2 : Division throught the radius (default value)
+
+! Elements for the van der Waals forces
+ET,2,LINK11 ! Spar elements available to use: LINK1, LINK8, LINK10, LINK10, LINK180
+R,2,k_vdw,0,0,,,
+    
+! ET,2,COMBIN39 ! Nonlinear spring element 
+! KEYOPT,2,1,0    ! Unload along same loading curve
+! KEYOPT,2,2,0    ! Compressive loading follows defined compressive curve
+! KEYOPT,2,4,0    ! 3-D longitudinal element (UX, UY and UZ)
+! R,1,1.0,1.e9,0,
+
+
+!-------------------------------------------------------------------------------------
+LOCAL,11,1,0,0,0
+    ! Defines local coordinate system by a location and orientation
+    ! KCN=11 : Arbitrary reference number for this coordinate system
+    ! KCS=1 (CYLIN) : Cylindrical
+    ! XC=0 : Location in global cartesian coordinates
+    ! YC=0 : idem
+    ! ZC=0 : idem
+
+CSYS,11
+    ! Activates the previous defined coordinate system
+    ! KCN=11 :  The previous coordinate
+
+TYPE,1
+MAT,1
